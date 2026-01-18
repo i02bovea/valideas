@@ -322,6 +322,9 @@
         <div class="login-card">
             <h1>Concurso de Ideas</h1>
             <p style="margin-bottom: 30px; color: var(--text-muted);">Gestión Profesional de Valoraciones</p>
+            <div id="data-indicator"
+                style="font-size: 0.75rem; margin-bottom: 15px; padding: 5px 10px; border-radius: 20px; display: inline-block;">
+                Comprobando datos maestros...</div>
             <div class="input-group">
                 <label>ID Evaluador</label>
                 <input type="text" id="login-user" placeholder="Ej: Eval1">
@@ -342,24 +345,35 @@
         <div class="dashboard-header">
             <div>
                 <h1>Panel Administrativo</h1>
-                <p>Carga y procesamiento de datos</p>
+                <p>Control de datos globales</p>
             </div>
             <button onclick="logout()" style="width:auto; padding:10px 20px; background:#fee2e2; color:#ef4444;">Cerrar
                 Sesión</button>
         </div>
         <div id="admin-status" class="admin-status" style="padding:15px; border-radius:12px; margin-bottom:20px;">
             Cargando...</div>
-        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
-            <span style="font-size: 50px;">📄</span>
-            <h3>Subir Valoración.xlsx</h3>
-            <p>Hojas necesarias: <b>DatosAgregados</b> y <b>DatosDesagregados</b></p>
-            <input type="file" id="file-input" class="hidden" accept=".xlsx" onchange="processExcel(this.files[0])">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+            <div class="upload-zone" onclick="document.getElementById('file-input').click()" style="padding: 30px;">
+                <span style="font-size: 40px;">📂</span>
+                <h3>Actualización Local</h3>
+                <p style="font-size: 0.8rem;">Solo para este navegador</p>
+                <input type="file" id="file-input" class="hidden" accept=".xlsx" onchange="processExcel(this.files[0])">
+            </div>
+            <div
+                style="background: #fdf2f8; border: 1px dashed #f472b6; border-radius: 24px; padding: 30px; text-align: center;">
+                <span style="font-size: 40px;">🌐</span>
+                <h3>Actualización Global</h3>
+                <p style="font-size: 0.8rem; color: #be185d;">Para que sea global, sube el archivo
+                    <b>Valoración.xlsx</b> directamente a tu repositorio en GitHub.</p>
+            </div>
         </div>
+
         <div id="admin-preview" class="hidden">
             <p style="font-weight:700; margin-bottom:10px;">Vista previa de integración:</p>
             <button onclick="localStorage.removeItem('valuation_db'); location.reload();"
                 style="width:auto; margin-bottom:10px; padding:5px 10px; font-size:12px; background:#f1f5f9;">Limpiar
-                Datos y Reiniciar</button>
+                Caché Local</button>
             <div
                 style="overflow:auto; max-height:300px; background:white; border-radius:15px; border:1px solid #eee; padding:15px;">
                 <table id="preview-table" style="width:100%; border-collapse:collapse; font-size:0.7rem;"></table>
@@ -393,13 +407,13 @@
                     <div id="lock-warning"
                         style="background:#fff7ed; border:1px solid #fdba74; padding:15px; border-radius:12px; color:#9a3412; font-size:0.875rem; margin-bottom:15px; display:none;">
                         ⚠️ <b>Atención:</b> Al generar el PDF, la evaluación de este proyecto se <b>bloqueará
-                            permanentemente</b> y no podrá ser modificada.
+                            permanentemente</b>.
                     </div>
-                    <button id="btn-submit" class="btn-primary" onclick="confirmAndSubmit()">Generar Documento de
-                        Valoración (PDF)</button>
+                    <button id="btn-submit" class="btn-primary" onclick="confirmAndSubmit()">Generar Documento
+                        (PDF)</button>
                     <div id="done-msg" class="hidden"
                         style="margin-top:20px; background:#f0fdf4; border:2px solid #10b981; padding:20px; border-radius:15px; color:#166534;">
-                        <p>✅ <b>¡Evaluación Completada!</b> Documento generado.</p>
+                        <p>✅ <b>¡Completado!</b> Documento generado.</p>
                         <p style="font-size:0.875rem;">Envíelo firmado a: <b>plainnova@uco.es</b></p>
                     </div>
                 </div>
@@ -413,30 +427,64 @@
         let currentUser = null;
         let activeProject = null;
 
+        const EXCEL_NAME = 'Valoración.xlsx';
         const CATEGORIES = ['Viabilidad', 'Originalidad', 'Impacto', 'Equipo', 'Ejecución', 'Total'];
 
-        window.onload = () => {
+        window.onload = async () => {
+            // 1. First, check for local data
             const saved = localStorage.getItem('valuation_db');
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    if (Array.isArray(parsed)) {
-                        appData = { agregados: parsed, desagregados: [] };
-                    } else {
-                        appData = parsed;
-                    }
+                    appData = Array.isArray(parsed) ? { agregados: parsed, desagregados: [] } : parsed;
                 } catch (e) { console.error("Cache error", e); }
             }
+
+            // 2. Try to fetch global data from the server (GitHub)
+            await loadGlobalData();
             updateAdminUI();
+            updateDataIndicator();
         };
+
+        async function loadGlobalData() {
+            try {
+                const response = await fetch(EXCEL_NAME);
+                if (!response.ok) throw new Error("No se encontró archivo global");
+
+                const arrayBuffer = await response.arrayBuffer();
+                const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+                const ag = XLSX.utils.sheet_to_json(wb.Sheets['DatosAgregados']);
+                const des = XLSX.utils.sheet_to_json(wb.Sheets['DatosDesagregados']);
+
+                if (ag.length > 0) {
+                    appData = { agregados: ag, desagregados: des || [] };
+                    console.log("Datos globales cargados desde servidor.");
+                }
+            } catch (err) {
+                console.log("No hay archivo global en el servidor, usando caché local si existe.");
+            }
+        }
+
+        function updateDataIndicator() {
+            const ind = document.getElementById('data-indicator');
+            if (appData.agregados.length > 0) {
+                ind.innerText = "● Datos Maestros Listos";
+                ind.style.background = "#dcfce7";
+                ind.style.color = "#166534";
+            } else {
+                ind.innerText = "○ Esperando Subida de Datos";
+                ind.style.background = "#fee2e2";
+                ind.style.color = "#991b1b";
+            }
+        }
 
         function updateAdminUI() {
             const div = document.getElementById('admin-status');
-            if (appData && appData.agregados && appData.agregados.length) {
-                div.innerHTML = `✅ <b>Sistema Preparado:</b> ${appData.agregados.length} proyectos cargados.`;
+            if (appData.agregados.length) {
+                div.innerHTML = `✅ <b>Datos Activos:</b> ${appData.agregados.length} proyectos en memoria.`;
                 div.style.background = "#f0fdf4"; div.style.color = "#166534";
             } else {
-                div.innerHTML = `⚠️ <b>Esperando datos:</b> El administrador debe subir el archivo Excel.`;
+                div.innerHTML = `⚠️ <b>Sistema Vacío:</b> Sube el excel al repositorio para hacerlo global.`;
                 div.style.background = "#fffbeb"; div.style.color = "#92400e";
             }
         }
@@ -448,15 +496,9 @@
             errEl.innerText = "";
 
             if (u === 'admin' && p === '1234') return showPhase('admin');
-
             if (p === 'otc2026') {
-                if (!appData || !appData.agregados || !appData.agregados.length) {
-                    alert("El administrador aún no ha cargado los datos.");
-                    return;
-                }
+                if (!appData.agregados.length) { alert("No hay datos cargados en el sistema."); return; }
 
-                // SEARCH ACROSS BOTH SHEETS:
-                // Evaluador can be in Agregados or in Desagregados (personal assignments)
                 const solicitudesInDes = appData.desagregados
                     .filter(d => {
                         const val = getVal(d, 'Evaluador');
@@ -476,32 +518,23 @@
                     currentUser = u;
                     initEval(projects);
                     showPhase('evaluator');
-                } else {
-                    errEl.innerText = "Usuario no encontrado en la lista de evaluadores.";
-                }
-            } else {
-                errEl.innerText = "Credenciales inválidas.";
-            }
+                } else { errEl.innerText = "Usuario no encontrado o sin proyectos."; }
+            } else { errEl.innerText = "Credenciales inválidas."; }
         }
 
         function logout() { location.reload(); }
 
         async function processExcel(file) {
             if (!file) return;
-            showToast("Procesando archivo...");
             const r = new FileReader();
             r.onload = (e) => {
-                try {
-                    const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                    const ag = XLSX.utils.sheet_to_json(wb.Sheets['DatosAgregados']);
-                    const des = XLSX.utils.sheet_to_json(wb.Sheets['DatosDesagregados']);
-                    if (!ag.length) throw new Error("La hoja 'DatosAgregados' está vacía o no existe.");
-                    appData = { agregados: ag, desagregados: des || [] };
-                    localStorage.setItem('valuation_db', JSON.stringify(appData));
-                    updateAdminUI();
-                    renderAdminPrev();
-                    showToast("Datos cargados con éxito");
-                } catch (err) { showToast(err.message, true); }
+                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const ag = XLSX.utils.sheet_to_json(wb.Sheets['DatosAgregados']);
+                const des = XLSX.utils.sheet_to_json(wb.Sheets['DatosDesagregados']);
+                appData = { agregados: ag, desagregados: des || [] };
+                localStorage.setItem('valuation_db', JSON.stringify(appData));
+                updateAdminUI(); renderAdminPrev(); updateDataIndicator();
+                showToast("Datos actualizados localmente");
             };
             r.readAsArrayBuffer(file);
         }
@@ -517,20 +550,16 @@
 
         function initEval(ps) {
             document.getElementById('eval-name').innerText = `Evaluador: ${currentUser}`;
-            document.getElementById('eval-stats').innerText = `Usted tiene ${ps.length} proyectos asignados.`;
+            document.getElementById('eval-stats').innerText = `Tienes ${ps.length} proyectos asignados.`;
             const g = document.getElementById('grid'); g.innerHTML = '';
             ps.forEach(p => {
                 const sid = getVal(p, 'SOLICITUD');
                 const isLocked = locked.includes(sid);
                 const candidates = appData.desagregados.filter(d => getVal(d, 'SOLICITUD') === sid);
-                const candidate = candidates[0]; // Take the first matching record for general info
+                const candidate = candidates[0];
                 const el = document.createElement('div');
                 el.className = `project-card ${isLocked ? 'is-locked' : ''}`;
-                el.innerHTML = `
-                    <div class="id">${sid}</div>
-                    <div class="name">${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</div>
-                    <div class="score">${getVal(p, 'Total', 0)}<span>pts</span></div>
-                `;
+                el.innerHTML = `<div class="id">${sid}</div><div class="name">${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</div><div class="score">${getVal(p, 'Total', 0)}<span>pts</span></div>`;
                 el.onclick = () => selectProject(p, candidate, candidates);
                 g.appendChild(el);
             });
@@ -542,7 +571,6 @@
             const isLocked = locked.includes(sid);
             document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
             event.currentTarget.classList.add('selected');
-
             document.getElementById('form-area').classList.remove('hidden');
             document.getElementById('justification-text').value = localStorage.getItem(`just_${sid}`) || '';
             document.getElementById('justification-text').disabled = isLocked;
@@ -550,54 +578,19 @@
             document.getElementById('lock-warning').style.display = isLocked ? 'none' : 'block';
             document.getElementById('done-msg').classList.toggle('hidden', !isLocked);
 
-            let html = `
-                <div class="candidate-box">
-                    <p>CANDIDATO/A</p>
-                    <h3>${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</h3>
-                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:5px;">ID: ${sid}</div>
-                </div>
-                <h4>Resultado Consolidado</h4>
-                <table class="scores-table">
-                    <thead><tr><th>Categoría</th><th style="text-align:right">Pts</th></tr></thead>
-                    <tbody>
-                        ${CATEGORIES.map(c => `
-                            <tr>
-                                <td>${c}</td>
-                                <td class="score-val ${c === 'Total' ? 'score-agg' : ''}">${getVal(p, c, 0)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                <div class="peer-comparison">
-                    <h4>Puntuaciones Desagregadas</h4>
-                    ${allVersions.length > 0 ? allVersions.map((v, idx) => `
-                        <div style="margin-bottom:15px; background:white; padding:12px; border-radius:12px; border:1px solid #edf2f7;">
-                            <div style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin-bottom:8px;">EVALUADOR ${idx + 1}: <span style="color:var(--primary)">${getVal(v, 'Evaluador', 'N/A')}</span></div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; font-size:0.75rem;">
-                                ${CATEGORIES.map(c => `<div>${c}: <b>${getVal(v, c, 0)}</b></div>`).join('')}
-                            </div>
-                        </div>
-                    `).join('') : '<p style="font-size:0.75rem; color:var(--text-muted)">No hay datos desagregados.</p>'}
-                </div>
-            `;
+            let html = `<div class="candidate-box"><p>CANDIDATO/A</p><h3>${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</h3><div style="font-size:0.75rem; color:var(--text-muted); margin-top:5px;">ID: ${sid}</div></div><h4>Consolidado</h4><table class="scores-table"><tbody>${CATEGORIES.map(c => `<tr><td>${c}</td><td class="score-val ${c === 'Total' ? 'score-agg' : ''}">${getVal(p, c, 0)}</td></tr>`).join('')}</tbody></table><div class="peer-comparison"><h4>Desagregadas</h4>${allVersions.map((v, idx) => `<div style="margin-bottom:10px; padding:10px; background:white; border-radius:10px; font-size:0.75rem;"><b>EVAL ${idx + 1}:</b> ${getVal(v, 'Evaluador', 'N/A')}<br>${CATEGORIES.map(c => `${c}: ${getVal(v, c, 0)}`).join(' | ')}</div>`).join('')}</div>`;
             document.getElementById('sidebar-content').innerHTML = html;
             document.getElementById('form-area').scrollIntoView({ behavior: 'smooth' });
         }
 
         function confirmAndSubmit() {
-            const sid = getVal(activeProject, 'SOLICITUD');
-            if (!document.getElementById('justification-text').value.trim()) return alert("Debe escribir una justificación.");
-            if (confirm("¿Está seguro? Una vez generado el PDF no podrá modificar la justificación.")) {
+            if (!document.getElementById('justification-text').value.trim()) return alert("Escribe la justificación.");
+            if (confirm("¿Confirmar envío? Se bloqueará la edición.")) {
                 generatePDF();
+                const sid = getVal(activeProject, 'SOLICITUD');
                 if (!locked.includes(sid)) { locked.push(sid); localStorage.setItem('locked_ids', JSON.stringify(locked)); }
                 localStorage.setItem(`just_${sid}`, document.getElementById('justification-text').value);
-                document.getElementById('justification-text').disabled = true;
-                document.getElementById('btn-submit').disabled = true;
-                document.getElementById('lock-warning').style.display = 'none';
-                document.getElementById('done-msg').classList.remove('hidden');
-                const card = Array.from(document.querySelectorAll('.project-card')).find(c => c.innerHTML.includes(sid));
-                if (card) card.classList.add('is-locked');
-                showToast("Evaluación bloqueada y PDF generado");
+                location.reload();
             }
         }
 
@@ -607,28 +600,18 @@
             const p = activeProject;
             const sid = getVal(p, 'SOLICITUD');
             const candidate = appData.desagregados.find(d => getVal(d, 'SOLICITUD') === sid);
-            const text = document.getElementById('justification-text').value;
-            doc.setFontSize(22); doc.setTextColor(37, 99, 235); doc.text("Informe de Valoración", 105, 25, { align: "center" });
-            doc.setFontSize(10); doc.setTextColor(100);
-            doc.text(`Solicitud: ${sid}`, 20, 40);
-            doc.text(`Candidato: ${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}`, 20, 47);
-            doc.text(`Evaluador Final: ${currentUser}`, 20, 54);
-            doc.line(20, 60, 190, 60);
-            doc.setFontSize(12); doc.setTextColor(0); doc.text("Puntuaciones Consolidadas", 20, 70);
-            CATEGORIES.forEach((c, i) => { doc.text(`${c}: ${getVal(p, c, 0)}`, 30, 80 + (i * 7)); });
-            doc.text("JUSTIFICACIÓN:", 20, 130);
-            doc.setFontSize(10); doc.text(doc.splitTextToSize(text, 170), 20, 138);
-            doc.line(120, 260, 180, 260); doc.text("Firma del Evaluador", 150, 265, { align: "center" });
+            doc.setFontSize(22); doc.text("Informe de Valoración", 105, 25, { align: "center" });
+            doc.setFontSize(10); doc.text(`Solicitud: ${sid} | Candidato: ${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')} | Evaluador: ${currentUser}`, 20, 40);
+            CATEGORIES.forEach((c, i) => doc.text(`${c}: ${getVal(p, c, 0)}`, 30, 60 + (i * 7)));
+            doc.text("JUSTIFICACIÓN:", 20, 110);
+            doc.text(doc.splitTextToSize(document.getElementById('justification-text').value, 170), 20, 118);
             doc.save(`Justificacion_${sid.replace(/\//g, '_')}.pdf`);
         }
 
         function getVal(o, k, f = '') {
             if (!o) return f;
-            const found = Object.keys(o).find(x => x.trim().toLowerCase() === k.toLowerCase());
-            if (found) return o[found];
-            // Fuzzy search if direct match fails
-            const fuzzy = Object.keys(o).find(x => x.trim().toLowerCase().includes(k.toLowerCase()));
-            return fuzzy ? o[fuzzy] : f;
+            const found = Object.keys(o).find(x => x.trim().toLowerCase() === k.toLowerCase()) || Object.keys(o).find(x => x.trim().toLowerCase().includes(k.toLowerCase()));
+            return found ? o[found] : f;
         }
 
         function showPhase(id) {
