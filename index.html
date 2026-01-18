@@ -308,7 +308,7 @@
                 Valoraciones</p>
             <div id="data-indicator"
                 style="font-size: 0.75rem; margin-bottom: 15px; padding: 5px 10px; border-radius: 20px; display: inline-block;">
-                Conectando con Google Sheets...</div>
+                Conectando...</div>
             <div class="input-group">
                 <label>ID Evaluador</label>
                 <input type="text" id="login-user" placeholder="Ej: Eval1">
@@ -347,7 +347,7 @@
                     </div>
                     <div id="lock-warning"
                         style="background:#fff7ed; border:1px solid #fdba74; padding:15px; border-radius:12px; color:#9a3412; font-size:0.875rem; margin-bottom:15px; display:none;">
-                        ⚠️ <b>Atención:</b> Al generar el PDF, la evaluación se bloqueará globalmente en Google Sheets.
+                        ⚠️ <b>Atención:</b> Al generar el PDF, la evaluación se bloqueará.
                     </div>
                     <button id="btn-submit" class="btn-primary" onclick="confirmAndSubmit()">Generar Documento
                         (PDF)</button>
@@ -363,7 +363,7 @@
 
     <script>
         // URL DE TU IMPLEMENTACIÓN DE GOOGLE APPS SCRIPT
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzNu8nI0Qk18ACkOBxZsd2FXOjaZGCWTtDXLcEpu8zgcFRdLRjN2Ya4FXc5TcCJKGct6w/exec';
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyAxvyiB5ZlHAprwengIvwuMwocpPe-NTmMq1PtXPGF9XG2OdMXRLm8KBUzJS2dplAyYQ/exec';
 
         let appData = { agregados: [], desagregados: [] };
         let currentUser = null;
@@ -382,17 +382,21 @@
 
             try {
                 const response = await fetch(GOOGLE_SCRIPT_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
 
                 // Convertir arrays a objetos JSON (Google Script devuelve arrays de arrays)
                 appData.agregados = arrayToObjects(data.agregados);
                 appData.desagregados = arrayToObjects(data.desagregados);
 
-                document.getElementById('data-indicator').innerText = "● Conectado a Hoja en Tiempo Real";
+                document.getElementById('data-indicator').innerText = "● Conectado en Tiempo Real";
                 document.getElementById('data-indicator').style.background = "#dcfce7";
                 document.getElementById('data-indicator').style.color = "#166534";
             } catch (err) {
-                document.getElementById('data-indicator').innerText = "⚠️ Error conectando con la nube";
+                console.error("Detalle del error:", err);
+                document.getElementById('data-indicator').innerText = "⚠️ Error: " + err.message;
+                document.getElementById('data-indicator').style.background = "#fee2e2";
+                document.getElementById('data-indicator').style.color = "#ef4444";
             }
         }
 
@@ -427,13 +431,22 @@
             initEval(projects);
         }
 
+        function logout() { location.reload(); }
+
         function initEval(ps) {
             document.getElementById('eval-name').innerText = `Evaluador: ${currentUser}`;
-            document.getElementById('eval-stats').innerText = `Viendo ${ps.length} proyectos.`;
+            document.getElementById('eval-stats').innerText = `Viendo ${ps.length} solicitudes.`;
             const g = document.getElementById('grid'); g.innerHTML = '';
             ps.forEach(p => {
                 const sid = getVal(p, 'SOLICITUD');
-                const isLocked = Number(getVal(p, 'Bloqueado')) === 1;
+
+                // El bloqueo ahora se mira en DatosDesagregados para el usuario actual
+                const myRow = appData.desagregados.find(d =>
+                    getVal(d, 'SOLICITUD') === sid &&
+                    String(getVal(d, 'Evaluador')).toUpperCase() === currentUser.toUpperCase()
+                );
+                const isLocked = Number(getVal(myRow, 'BLOQUEADO')) === 1;
+
                 const candidate = appData.desagregados.find(d => getVal(d, 'SOLICITUD') === sid);
                 const el = document.createElement('div');
                 el.className = `project-card ${isLocked ? 'is-locked' : ''}`;
@@ -446,12 +459,23 @@
         function selectProject(p, c, all) {
             activeProject = p;
             const sid = getVal(p, 'SOLICITUD');
-            const isLocked = Number(getVal(p, 'Bloqueado')) === 1;
+
+            // Buscar el registro de este evaluador para ver si él lo ha bloqueado
+            const myEvalData = all.find(v => String(getVal(v, 'Evaluador')).toUpperCase() === currentUser.toUpperCase());
+            const isLocked = Number(getVal(myEvalData, 'BLOQUEADO')) === 1;
 
             document.getElementById('form-area').classList.remove('hidden');
-            document.getElementById('justification-text').value = '';
+
+            // Cargar la justificación existente si la hay
+            const existingJust = getVal(myEvalData, 'JUSTIFICACION');
+
+            document.getElementById('justification-text').value = existingJust || '';
             document.getElementById('justification-text').disabled = isLocked;
-            document.getElementById('btn-submit').disabled = isLocked;
+
+            // El botón NO se deshabilita si está bloqueado, para permitir re-generar el PDF
+            document.getElementById('btn-submit').disabled = false;
+            document.getElementById('btn-submit').innerText = isLocked ? "Re-generar PDF" : "Generar Documento (PDF)";
+
             document.getElementById('lock-warning').style.display = isLocked ? 'none' : 'block';
             document.getElementById('done-msg').classList.toggle('hidden', !isLocked);
 
@@ -506,35 +530,52 @@
             const text = document.getElementById('justification-text').value.trim();
             if (!text) return alert("Escribe una justificación.");
 
-            if (confirm("¿Confirmar? Se bloqueará en Google Sheets permanentemente.")) {
-                document.getElementById('btn-submit').innerText = "Bloqueando en la nube...";
-                document.getElementById('btn-submit').disabled = true;
+            // Comprobamos si el evaluador actual ya ha bloqueado este proyecto
+            const myEvalRow = appData.desagregados.find(d =>
+                getVal(d, 'SOLICITUD') === sid &&
+                String(getVal(d, 'Evaluador')).toUpperCase() === currentUser.toUpperCase()
+            );
+            const isAlreadyLocked = Number(getVal(myEvalRow, 'BLOQUEADO')) === 1;
 
-                try {
-                    // 1. Enviar bloqueo a Google Sheets
-                    await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ solicitud: sid })
-                    });
+            if (!isAlreadyLocked) {
+                if (confirm("¿Confirmar? La evaluación se bloqueará permanentemente.")) {
+                    document.getElementById('btn-submit').innerText = "Bloqueando...";
+                    document.getElementById('btn-submit').disabled = true;
 
-                    // 2. Generar PDF
-                    await generatePDF();
+                    try {
+                        // 1. Enviar bloqueo Y JUSTIFICACIÓN a Google Sheets
+                        await fetch(GOOGLE_SCRIPT_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                solicitud: sid,
+                                evaluador: currentUser,
+                                justificacion: text
+                            })
+                        });
 
-                    showToast("Bloqueado en Google Sheets y PDF generado.");
+                        // 2. Generar PDF
+                        await generatePDF();
 
-                    // 3. Recargar datos de la nube
-                    setTimeout(async () => {
-                        await loadGlobalData();
-                        document.getElementById('form-area').classList.add('hidden');
-                        renderEvaluatorView();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }, 2000);
+                        showToast("Guardado y PDF generado.");
 
-                } catch (err) {
-                    alert("Error al conectar con Google Sheets.");
-                    document.getElementById('btn-submit').innerText = "Generar Documento (PDF)";
-                    document.getElementById('btn-submit').disabled = false;
+                        // 3. Recargar datos de la nube
+                        setTimeout(async () => {
+                            await loadGlobalData();
+                            document.getElementById('form-area').classList.add('hidden');
+                            renderEvaluatorView();
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }, 2000);
+
+                    } catch (err) {
+                        alert("Error al conectar con Google Sheets.");
+                        document.getElementById('btn-submit').innerText = "Generar Documento (PDF)";
+                        document.getElementById('btn-submit').disabled = false;
+                    }
                 }
+            } else {
+                // Si ya está bloqueado, solo generamos el PDF de nuevo
+                await generatePDF();
+                showToast("PDF re-generado.");
             }
         }
 
@@ -605,7 +646,15 @@
             if (!o) return f;
             const keys = Object.keys(o);
             const found = keys.find(x => x.trim().toLowerCase() === k.toLowerCase()) || keys.find(x => x.trim().toLowerCase().includes(k.toLowerCase()));
-            return found ? o[found] : f;
+            let v = found ? o[found] : f;
+
+            // Si el valor es numérico (y no es una celda vacía o booleana), redondeamos a 2 decimales
+            if (v !== '' && v !== null && v !== undefined && !isNaN(v) && typeof v !== 'boolean') {
+                let num = parseFloat(v);
+                // Solo redondeamos si tiene decimales
+                return Math.round((num + Number.EPSILON) * 100) / 100;
+            }
+            return v;
         }
 
         function showPhase(id) {
