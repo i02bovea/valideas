@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concurso de Ideas - Gestión de Valoraciones</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- Scripts -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --accent: #7c3aed;
+            --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            --glass-bg: rgba(255, 255, 255, 0.95);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            --locked-bg: #f1f5f9;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Outfit', sans-serif;
+            color: #0f172a;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 30px;
+            box-shadow: var(--shadow);
+            padding: 40px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .container.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* --- LOGIN --- */
+        .login-card {
+            max-width: 400px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 14px 18px;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            font-size: 1rem;
+            outline: none;
+            background: white;
+            transition: all 0.2s;
+        }
+
+        input:focus,
+        textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        textarea:disabled {
+            background: var(--locked-bg);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 14px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* --- DASHBOARD --- */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 20px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+        }
+
+        .project-card {
+            background: white;
+            padding: 24px;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .project-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .project-card.selected {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.02);
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+
+        .project-card.is-locked::after {
+            content: "🔒 COMPLETADO";
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #10b981;
+            color: white;
+            padding: 4px 10px;
+            font-size: 0.65rem;
+            border-radius: 20px;
+            font-weight: 800;
+        }
+
+        /* --- EVALUATION LAYOUT --- */
+        .form-layout {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 40px;
+            margin-top: 30px;
+        }
+
+        .sidebar-info {
+            background: #f8fafc;
+            padding: 28px;
+            border-radius: 24px;
+            border: 1px solid #e2e8f0;
+            height: fit-content;
+        }
+
+        .candidate-box {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .candidate-box h3 {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+
+        .candidate-box p {
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .scores-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.875rem;
+        }
+
+        .scores-table th {
+            text-align: left;
+            color: var(--text-muted);
+            padding: 8px 4px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .scores-table td {
+            padding: 10px 4px;
+            font-weight: 600;
+            border-bottom: 1px solid #f8f8f8;
+        }
+
+        .score-val {
+            color: var(--primary);
+            text-align: right;
+        }
+
+        .score-agg {
+            background: #eff6ff;
+            border-radius: 4px;
+            font-weight: 800;
+            color: #1e40af;
+        }
+
+        .peer-comparison {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .peer-comparison h4 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 15px;
+            letter-spacing: 0.05em;
+        }
+
+        /* --- TOAST --- */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            background: #10b981;
+            color: white;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            transform: translateX(200%);
+            transition: 0.5s;
+            z-index: 1000;
+            font-weight: 600;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.error {
+            background: #ef4444;
+        }
+
+        @media (max-width: 900px) {
+            .form-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="toast" class="toast">¡Hecho!</div>
+
+    <!-- Phase: Auth -->
+    <div id="phase-auth" class="container active">
+        <div class="login-card">
+            <h1>Concurso de Ideas</h1>
+            <p style="margin-bottom: 30px; color: var(--text-muted);">Gestión Profesional de Valoraciones</p>
+            <div class="input-group">
+                <label>ID Evaluador</label>
+                <input type="text" id="login-user" placeholder="Ej: Eval1">
+            </div>
+            <div class="input-group">
+                <label>Contraseña</label>
+                <input type="password" id="login-pass" placeholder="••••••••">
+            </div>
+            <button class="btn-primary" onclick="handleAuth()">Entrar</button>
+            <p id="auth-error"
+                style="color: #ef4444; margin-top: 15px; font-size: 0.875rem; font-weight: 600; min-height: 1.25rem;">
+            </p>
+        </div>
+    </div>
+
+    <!-- Phase: Admin -->
+    <div id="phase-admin" class="container hidden">
+        <div class="dashboard-header">
+            <div>
+                <h1>Panel Administrativo</h1>
+                <p>Carga y procesamiento de datos</p>
+            </div>
+            <button onclick="logout()" style="width:auto; padding:10px 20px; background:#fee2e2; color:#ef4444;">Cerrar
+                Sesión</button>
+        </div>
+        <div id="admin-status" class="admin-status" style="padding:15px; border-radius:12px; margin-bottom:20px;">
+            Cargando...</div>
+        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+            <span style="font-size: 50px;">📄</span>
+            <h3>Subir Valoración.xlsx</h3>
+            <p>Hojas necesarias: <b>DatosAgregados</b> y <b>DatosDesagregados</b></p>
+            <input type="file" id="file-input" class="hidden" accept=".xlsx" onchange="processExcel(this.files[0])">
+        </div>
+        <div id="admin-preview" class="hidden">
+            <p style="font-weight:700; margin-bottom:10px;">Vista previa de integración:</p>
+            <button onclick="localStorage.removeItem('valuation_db'); location.reload();"
+                style="width:auto; margin-bottom:10px; padding:5px 10px; font-size:12px; background:#f1f5f9;">Limpiar
+                Datos y Reiniciar</button>
+            <div
+                style="overflow:auto; max-height:300px; background:white; border-radius:15px; border:1px solid #eee; padding:15px;">
+                <table id="preview-table" style="width:100%; border-collapse:collapse; font-size:0.7rem;"></table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase: Evaluator -->
+    <div id="phase-evaluator" class="container hidden">
+        <div class="dashboard-header">
+            <div>
+                <h2 id="eval-name">Hola</h2>
+                <p id="eval-stats">Cargando...</p>
+            </div>
+            <button onclick="logout()" style="width:auto; padding:10px 20px; background:#fee2e2; color:#ef4444;">Cerrar
+                Sesión</button>
+        </div>
+        <div id="grid" class="grid-container"></div>
+
+        <div id="form-area" class="hidden">
+            <h2 style="margin-top: 50px; border-top: 2px solid #eee; padding-top: 30px;">Justificación de Resultados
+            </h2>
+            <div class="form-layout">
+                <div class="sidebar-info" id="sidebar-content"></div>
+                <div>
+                    <div class="input-group">
+                        <label>Redacción de la Justificación Técnica</label>
+                        <textarea id="justification-text" rows="15"
+                            placeholder="Exponga los motivos de la valoración..."></textarea>
+                    </div>
+                    <div id="lock-warning"
+                        style="background:#fff7ed; border:1px solid #fdba74; padding:15px; border-radius:12px; color:#9a3412; font-size:0.875rem; margin-bottom:15px; display:none;">
+                        ⚠️ <b>Atención:</b> Al generar el PDF, la evaluación de este proyecto se <b>bloqueará
+                            permanentemente</b> y no podrá ser modificada.
+                    </div>
+                    <button id="btn-submit" class="btn-primary" onclick="confirmAndSubmit()">Generar Documento de
+                        Valoración (PDF)</button>
+                    <div id="done-msg" class="hidden"
+                        style="margin-top:20px; background:#f0fdf4; border:2px solid #10b981; padding:20px; border-radius:15px; color:#166534;">
+                        <p>✅ <b>¡Evaluación Completada!</b> Documento generado.</p>
+                        <p style="font-size:0.875rem;">Envíelo firmado a: <b>plainnova@uco.es</b></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let appData = { agregados: [], desagregados: [] };
+        let locked = JSON.parse(localStorage.getItem('locked_ids') || "[]");
+        let currentUser = null;
+        let activeProject = null;
+
+        const CATEGORIES = ['Viabilidad', 'Originalidad', 'Impacto', 'Equipo', 'Ejecución', 'Total'];
+
+        window.onload = () => {
+            const saved = localStorage.getItem('valuation_db');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed)) {
+                        appData = { agregados: parsed, desagregados: [] };
+                    } else {
+                        appData = parsed;
+                    }
+                } catch (e) { console.error("Cache error", e); }
+            }
+            updateAdminUI();
+        };
+
+        function updateAdminUI() {
+            const div = document.getElementById('admin-status');
+            if (appData && appData.agregados && appData.agregados.length) {
+                div.innerHTML = `✅ <b>Sistema Preparado:</b> ${appData.agregados.length} proyectos cargados.`;
+                div.style.background = "#f0fdf4"; div.style.color = "#166534";
+            } else {
+                div.innerHTML = `⚠️ <b>Esperando datos:</b> El administrador debe subir el archivo Excel.`;
+                div.style.background = "#fffbeb"; div.style.color = "#92400e";
+            }
+        }
+
+        function handleAuth() {
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value.trim();
+            const errEl = document.getElementById('auth-error');
+            errEl.innerText = "";
+
+            if (u === 'admin' && p === '1234') return showPhase('admin');
+
+            if (p === 'otc2026') {
+                if (!appData || !appData.agregados || !appData.agregados.length) {
+                    alert("El administrador aún no ha cargado los datos.");
+                    return;
+                }
+
+                // SEARCH ACROSS BOTH SHEETS:
+                // Evaluador can be in Agregados or in Desagregados (personal assignments)
+                const solicitudesInDes = appData.desagregados
+                    .filter(d => {
+                        const val = getVal(d, 'Evaluador');
+                        return val && String(val).toUpperCase() === u.toUpperCase();
+                    })
+                    .map(d => getVal(d, 'SOLICITUD'));
+
+                const projects = appData.agregados.filter(x => {
+                    const sid = getVal(x, 'SOLICITUD');
+                    const evalInAg = getVal(x, 'Evaluador');
+                    const matchInAg = evalInAg && String(evalInAg).toUpperCase() === u.toUpperCase();
+                    const matchBySid = solicitudesInDes.includes(sid);
+                    return matchInAg || matchBySid;
+                });
+
+                if (projects.length > 0) {
+                    currentUser = u;
+                    initEval(projects);
+                    showPhase('evaluator');
+                } else {
+                    errEl.innerText = "Usuario no encontrado en la lista de evaluadores.";
+                }
+            } else {
+                errEl.innerText = "Credenciales inválidas.";
+            }
+        }
+
+        function logout() { location.reload(); }
+
+        async function processExcel(file) {
+            if (!file) return;
+            showToast("Procesando archivo...");
+            const r = new FileReader();
+            r.onload = (e) => {
+                try {
+                    const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const ag = XLSX.utils.sheet_to_json(wb.Sheets['DatosAgregados']);
+                    const des = XLSX.utils.sheet_to_json(wb.Sheets['DatosDesagregados']);
+                    if (!ag.length) throw new Error("La hoja 'DatosAgregados' está vacía o no existe.");
+                    appData = { agregados: ag, desagregados: des || [] };
+                    localStorage.setItem('valuation_db', JSON.stringify(appData));
+                    updateAdminUI();
+                    renderAdminPrev();
+                    showToast("Datos cargados con éxito");
+                } catch (err) { showToast(err.message, true); }
+            };
+            r.readAsArrayBuffer(file);
+        }
+
+        function renderAdminPrev() {
+            const t = document.getElementById('preview-table');
+            const d = appData.agregados.slice(0, 5);
+            const headers = Object.keys(d[0] || {});
+            t.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>` +
+                d.map(r => `<tr>${headers.map(h => `<td>${r[h] || ''}</td>`).join('')}</tr>`).join('');
+            document.getElementById('admin-preview').classList.remove('hidden');
+        }
+
+        function initEval(ps) {
+            document.getElementById('eval-name').innerText = `Evaluador: ${currentUser}`;
+            document.getElementById('eval-stats').innerText = `Usted tiene ${ps.length} proyectos asignados.`;
+            const g = document.getElementById('grid'); g.innerHTML = '';
+            ps.forEach(p => {
+                const sid = getVal(p, 'SOLICITUD');
+                const isLocked = locked.includes(sid);
+                const candidates = appData.desagregados.filter(d => getVal(d, 'SOLICITUD') === sid);
+                const candidate = candidates[0]; // Take the first matching record for general info
+                const el = document.createElement('div');
+                el.className = `project-card ${isLocked ? 'is-locked' : ''}`;
+                el.innerHTML = `
+                    <div class="id">${sid}</div>
+                    <div class="name">${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</div>
+                    <div class="score">${getVal(p, 'Total', 0)}<span>pts</span></div>
+                `;
+                el.onclick = () => selectProject(p, candidate, candidates);
+                g.appendChild(el);
+            });
+        }
+
+        function selectProject(p, candidate, allVersions) {
+            activeProject = p;
+            const sid = getVal(p, 'SOLICITUD');
+            const isLocked = locked.includes(sid);
+            document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+
+            document.getElementById('form-area').classList.remove('hidden');
+            document.getElementById('justification-text').value = localStorage.getItem(`just_${sid}`) || '';
+            document.getElementById('justification-text').disabled = isLocked;
+            document.getElementById('btn-submit').disabled = isLocked;
+            document.getElementById('lock-warning').style.display = isLocked ? 'none' : 'block';
+            document.getElementById('done-msg').classList.toggle('hidden', !isLocked);
+
+            let html = `
+                <div class="candidate-box">
+                    <p>CANDIDATO/A</p>
+                    <h3>${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}</h3>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:5px;">ID: ${sid}</div>
+                </div>
+                <h4>Resultado Consolidado</h4>
+                <table class="scores-table">
+                    <thead><tr><th>Categoría</th><th style="text-align:right">Pts</th></tr></thead>
+                    <tbody>
+                        ${CATEGORIES.map(c => `
+                            <tr>
+                                <td>${c}</td>
+                                <td class="score-val ${c === 'Total' ? 'score-agg' : ''}">${getVal(p, c, 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="peer-comparison">
+                    <h4>Puntuaciones Desagregadas</h4>
+                    ${allVersions.length > 0 ? allVersions.map((v, idx) => `
+                        <div style="margin-bottom:15px; background:white; padding:12px; border-radius:12px; border:1px solid #edf2f7;">
+                            <div style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin-bottom:8px;">EVALUADOR ${idx + 1}: <span style="color:var(--primary)">${getVal(v, 'Evaluador', 'N/A')}</span></div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; font-size:0.75rem;">
+                                ${CATEGORIES.map(c => `<div>${c}: <b>${getVal(v, c, 0)}</b></div>`).join('')}
+                            </div>
+                        </div>
+                    `).join('') : '<p style="font-size:0.75rem; color:var(--text-muted)">No hay datos desagregados.</p>'}
+                </div>
+            `;
+            document.getElementById('sidebar-content').innerHTML = html;
+            document.getElementById('form-area').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function confirmAndSubmit() {
+            const sid = getVal(activeProject, 'SOLICITUD');
+            if (!document.getElementById('justification-text').value.trim()) return alert("Debe escribir una justificación.");
+            if (confirm("¿Está seguro? Una vez generado el PDF no podrá modificar la justificación.")) {
+                generatePDF();
+                if (!locked.includes(sid)) { locked.push(sid); localStorage.setItem('locked_ids', JSON.stringify(locked)); }
+                localStorage.setItem(`just_${sid}`, document.getElementById('justification-text').value);
+                document.getElementById('justification-text').disabled = true;
+                document.getElementById('btn-submit').disabled = true;
+                document.getElementById('lock-warning').style.display = 'none';
+                document.getElementById('done-msg').classList.remove('hidden');
+                const card = Array.from(document.querySelectorAll('.project-card')).find(c => c.innerHTML.includes(sid));
+                if (card) card.classList.add('is-locked');
+                showToast("Evaluación bloqueada y PDF generado");
+            }
+        }
+
+        function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const p = activeProject;
+            const sid = getVal(p, 'SOLICITUD');
+            const candidate = appData.desagregados.find(d => getVal(d, 'SOLICITUD') === sid);
+            const text = document.getElementById('justification-text').value;
+            doc.setFontSize(22); doc.setTextColor(37, 99, 235); doc.text("Informe de Valoración", 105, 25, { align: "center" });
+            doc.setFontSize(10); doc.setTextColor(100);
+            doc.text(`Solicitud: ${sid}`, 20, 40);
+            doc.text(`Candidato: ${getVal(candidate, 'NOMBRE', '')} ${getVal(candidate, 'APELLIDOS', '')}`, 20, 47);
+            doc.text(`Evaluador Final: ${currentUser}`, 20, 54);
+            doc.line(20, 60, 190, 60);
+            doc.setFontSize(12); doc.setTextColor(0); doc.text("Puntuaciones Consolidadas", 20, 70);
+            CATEGORIES.forEach((c, i) => { doc.text(`${c}: ${getVal(p, c, 0)}`, 30, 80 + (i * 7)); });
+            doc.text("JUSTIFICACIÓN:", 20, 130);
+            doc.setFontSize(10); doc.text(doc.splitTextToSize(text, 170), 20, 138);
+            doc.line(120, 260, 180, 260); doc.text("Firma del Evaluador", 150, 265, { align: "center" });
+            doc.save(`Justificacion_${sid.replace(/\//g, '_')}.pdf`);
+        }
+
+        function getVal(o, k, f = '') {
+            if (!o) return f;
+            const found = Object.keys(o).find(x => x.trim().toLowerCase() === k.toLowerCase());
+            if (found) return o[found];
+            // Fuzzy search if direct match fails
+            const fuzzy = Object.keys(o).find(x => x.trim().toLowerCase().includes(k.toLowerCase()));
+            return fuzzy ? o[fuzzy] : f;
+        }
+
+        function showPhase(id) {
+            document.querySelectorAll('.container').forEach(c => c.classList.add('hidden', 'active'));
+            const el = document.getElementById(`phase-${id}`);
+            el.classList.remove('hidden'); setTimeout(() => el.classList.add('active'), 10);
+        }
+
+        function showToast(m, isErr = false) {
+            const t = document.getElementById('toast'); t.innerText = m; t.classList.toggle('error', isErr); t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+    </script>
+</body>
+
+</html>
