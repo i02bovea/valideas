@@ -553,7 +553,7 @@
                 } catch (e) { }
 
                 doc.setFontSize(18); doc.setTextColor(37, 99, 235);
-                doc.text("INFORME DE VALORACIÓN", 105, 45, { align: "center" });
+                doc.text("JUSTIFICACIÓN DE LA VALORACIÓN", 105, 45, { align: "center" });
                 doc.setFontSize(10); doc.setTextColor(80);
 
                 // Buscar el nombre real del evaluador actual en los datos de este proyecto
@@ -570,10 +570,32 @@
                 CATEGORIES.forEach((c, i) => doc.text(`${c}: ${getVal(p, c, 0)}`, 30, 105 + (i * 7)));
 
                 doc.text("JUSTIFICACIÓN TÉCNICA:", 20, 150);
-                doc.setFontSize(10);
-                doc.text(doc.splitTextToSize(text, 170), 20, 160);
+                doc.setFontSize(10); doc.setTextColor(0);
 
-                doc.line(120, 260, 180, 260); doc.text("Firma del Evaluador", 150, 265, { align: "center" });
+                const splitLines = doc.splitTextToSize(text || "Sin texto.", 170);
+                let y = 160;
+                const margin = 20;
+                const pageHeight = doc.internal.pageSize.height;
+                const lineHeight = 6;
+
+                for (let i = 0; i < splitLines.length; i++) {
+                    if (y > pageHeight - 30) {
+                        doc.addPage();
+                        y = margin;
+                    }
+                    doc.text(splitLines[i], 20, y, { align: "justify", maxWidth: 170 });
+                    y += lineHeight;
+                }
+
+                y += 20;
+                if (y > pageHeight - 50) {
+                    doc.addPage();
+                    y = margin + 20;
+                }
+
+                doc.line(120, y, 180, y);
+                doc.text("Firma del Evaluador", 150, y + 5, { align: "center" });
+
                 doc.save(`Justificacion_${sid.replace(/[^a-z0-9]/gi, '_')}.pdf`);
                 resolve();
             });
